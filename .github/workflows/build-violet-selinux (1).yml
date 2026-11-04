@@ -1,0 +1,265 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# Upload this ONE file to .github/workflows/build-violet-selinux.yml.
+# Manual experimental build for Redmi Note 7 Pro (violet) only.
+# Includes an adapted SUSFS 61fc8b78 port and BakaSU PR 648.
+# Local source/host checks passed; ARM64 build and phone testing still required.
+# The gzip/base64 payload below contains readable patches and checks, not binaries.
+# The run extracts those files into its diagnostics artifact for review.
+name: Build violet BakaSU SELinux test
+run-name: Violet SELinux test - verified Clang download v2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout the reviewed builder
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: kbyte8/KSU_Builder
+          ref: 1544449d4303b023a78ac1c982721bd5c6e909bc
+          path: builder
+          persist-credentials: false
+
+      - name: Checkout the reviewed XCalibur kernel
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Justadeayo/android_kernel_xiaomi_violet
+          ref: b215d4f33f30eda7f2fdc9ae45a8d902745df3f6
+          path: kernel_src
+          persist-credentials: false
+
+      - name: Checkout the existing violet AnyKernel installer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Justadeayo/AnyKernel3
+          ref: master
+          path: anykernel-source
+          persist-credentials: false
+
+      - name: Extract the embedded SELinux port
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, gzip, hashlib, json, pathlib
+          payload = json.loads(r'''{
+            "kernel-selinux.patch": "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",
+            "bakasu-selinux.patch": "H4sIAAAAAAACA7WS20rDQBCG7/MUg4K0ppsoFiJKS+sRUfQiHm6EZd2d1MXtpuyhtYjv7ibaVsFWvXAvMj/J/jOZb0bIogBCBtIBS5/QaFSpRSW1fw5xVCrJpwmHh+XfIkLIKm8Ux/FKf68HZKfdbmUQV2F7C3q9CGbnNYII1mUhsIDDq8uTs1N6nt/Q/CY/ySMyu2W9LSxlQtCgKBsLypQqJyjow5S66Qgb1nDSHTPlsQVu4OaaKzvXuhRIuoI5P0x8EiJr7kfxrEa6CX0vAqghs08WmMFgCNg4R2vfXyaQszFCqdUU3GMQRg6kZgrqvwHjFSawmS5yygIaWBTIHXQ60L+97h/Q/sXF1d3xEWxsLO79a4/Nr3VGhk6Y0dQwF4Y1lA5FY60uvge89ErUbRvkpRHfdXiv1wI2WEctQntpunR6sJhyxUHqMRrXhJd6I7Jsu9qILGu3ducL8fMyfIVUU6keVLNhBSXIDxKzyVaVf2/6hOpPmEJuFHWm39OpjkHnjQZnPAZT9AZxcxXtrgMAAA==",
+            "registry.c": "H4sIAAAAAAACA8VW227bOBB9tr5iigJZ2/UldowkbS5AkjqNsbl442SRpxVoirIJy6RLUk7cRf69Q1GyfO2mxS7WD4moGc4Mz8w5VL0Ove7np+o1p0xoVu0ETBgecqY+wZfudbVZ261KEc28etmDMjxdkIj3YwWtWqMFJCATQwyXAmQImo+lmMRiVNexDnVrpGOgcjzmxu7cb4T0sH9wSD+SXUZbzTD4eNBoNfZaAds7POw3CN3bPSCNfSiylwlTfIx1kKhUs3vv2YBro1wmFQsNz9wM4ZyMSO/xNw0TGXE689VzJOkIhiwKgIgAOvd/aAi4Jv2IBUmgtjCKMw1EMeDjcWysCUhomIJJ3McoLofdrZghXLAAYgQkwmVfSmOj1L33XNAoDhgcR1zEL3WmlJC14emaYUj0cNv7JPcmo45If+P7CRf2gBttFnFfs2RlHTxtG0Phc/uyc9v2e93O7fXdxe9F52hmE+bbWKWjFcers97Vw9n5dXvRMym1Ao1ddEd/FVMDC2bslJrB314hNQ0j7JYvJJZn/xx5hXivCYnrlEQxvnjFOFxkQUgQ+PiUBCtSKbQBOiQKyppRal4qsLy95OWp1qooJ/9sSqH5wLYvkmIAYUQGGt/apNgtOIFdLKFQnEoelFwatFqEE1h8rr5qMmXFnRW8Ki4S4lCwPfRDqXxG6NCfSK05orQBtqSiSgJFZfEYFrECD3HgrUP1NDfBycnSeQuFwkAaCTI2mPjVK7iznsDoG4mwrKLm35gMi+7wpQp8uez6Zw93N50LW6nN8c6ZkpwOgGr79u6mfYP2TcGXy1lqnju5bZqi8Ybz7qQB1g585GGOTynMsciAVkwbqX6INXIxVsJ2DmfHQy0C1KEISTuUUaAB6/AVI0GyrViqwRVWCP2YjphxZBfSII/5VzzMiM10zbIY+RylA8T1fACTQ/3CwG0biC0g/StDkcKClTHXuvRFSCLNEqTeByxEEYPeY++y55/96Z93HnrQOFw33Jw9+e3bh/tOuwfN/Waj1Xr8sYaQ6dsUBP3SMy8Vke+bM3VBEaY+lai7q3KD798mNg7sTHkWF3RxIRUf+JZCzyxwqpTVZGNkKVWMbbTdLeahU1FaeHaBk1lJ25AMxF6z6HbAX1B0/nB8DM2SXdP5ulVax+d1k0iSaZBV7PdnTjO3lGVHpAD4y8tz9sVjrw/3HOR/0FIbCcmE6rABqaycDKEUnXUJ3qq56Xy9VXHzMVuiFha4xqm0H8in9GlnBzK6zU0mM3kOw9SBzh2yfi+KM6AydVHPmJoyMEMGIVfaIOhiLAP7VRXAmOhRIj+Wr7ao5YmH05ONnFxV7l73Yoty/8fXQgZeTrEV6HK6rUCWUy81LI4hmpfJuOmWyXu8fMfYJtvrewnJDx/edt+sz9nP3jY3xNAhoAu2G789dQXc1xlHstCIaHfd2E+NlCl6ImW4xOTs0tnCYnC/VR6Xf4bDv8TWN9xq/xfxkuCFcj4/G6bqKL8l7eOrHeRX7zt6QSNi9AwAAA==",
+            "test-registry.py": "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",
+            "stage-build.py": "H4sIAAAAAAACA41WbXPaOBD+7l+x53TGcAc4JEBIenwglCQMHDAY7q7TdDxClkGHkVxLbqAl//1WNiQhbebOMzCyXnafffbRrk9+cVOVuHMuXCa+QrzVSynOLdu2vTWJohKwDaEaWMC1Ai1BLxnEXAgWwDzlUcASs4XRVJsZFsqEgdmaLYLSLFYVNGaFiVxDTPQy4nPg61gmGsb4au3HCTuM1DLVPLKsgIUgBWUFzTa6BDIKSiDYQ/HKAnx4CGa+QmUqdAEXi/BLC6r5onkSwhUDb4sQ1t0N1wVnJtgmZlQ/Qwcl04QyIPoKHPjN+ChmBhKm00TkHhIWRwRhHACUoFq0rBhaGf6CQ6UI+aKC7DlFK648JFwz35wsZOhjNECCfKJYAieos0t2elafN+e1y2q9HjZPq7VGsxY0avSyelE7m9ca9bBRd0pPoTw/TuNiXm/U6mcXl2FwekHOGs1mcNmoVcOgdn523qxVWUgIm586xeILiIomPNbKXam0opb/Cyamii6hHFehXA7Tb99a5/C78zxfnv9sHZ1aJzDJCcPkRdtML8gcBPJBRJIELiUUp+aRpKv3hmfCRb4p4QsuSARIJE+kWDOhKz+JAZfzGBQuHaG2lCaonxaoChcB2xQcFMknKAdgv+sM2sNb/0NvYpRuw+f3xqdAK0wEL0/cG41k2mxP71oYcGYzd6Y+XWVvn1EpjuPMiVqi5e9eZ9IbT43tRzdkyEqZRkQsyl9ZwkPOAkRrw/19ls0DkD+7E683GtpPE9eT9rBzZ79EalvoBF2pT4jx6vNxzhRCyu4JXoB4e1bIOPL9kEfM94uVB66XviBrVnDegOQUX+nrmOU3Tx1J/7CbynWMnt/MC85kIlMooAXXQCMpGAonYLFeAkpojoG3++cvaDBvk+54dBgbQl5eiSM7QpaXJAkiLlbKpOS2N72bXft/jSZ9b9zudB9dIrYrlggWlfMrf2T2FcIToJlI74URvIPvN4RHh+KWx0o0l8IUoX5+/SHgiiIErC0EVf0l5QkOZWy2VSw8uB8Dqr3vzczP92bejQfTu0m3/cHvDW9G+OdP214fvG5nNulNP/ped9Abzv6Gfnsw8D7+4b3He5RxsMCqBOUvG7A7o+FN79Z/9z138NjamthGs0yRbiWHZ8NuhxAZ2JMDth/PAVew5kpxsbCtAJm1ML4fHBnk0wmSOh71hlP/bjTq/9xlfsUytJnnaYJFIZZcaFhKuYL0qRxjmVAsyiszF1iwCVIXQs4PF5hWlh3BLsJNgcnTY67Hq8wN2tfdQQsFkA0ec4Zt560VQy8X6aZRDWlzfuFPu97UqOEE+gyjNlWJbbjSSAhEbEHoFsKILBSYfB4Km04YK2FDMS3sH4wB2tc9V29jPJskMlFobV/hXionFaZJkjDc9yNTKJH+rPQQLElmP/YauCYrgnLBK6gyJb0SaibMSKaGQtMR8VQuc2yxZMFy/T5lsQtOQWGrxjKydZFxE7u7C5WrUhUqfz9zf1+hu9yKSt1dPxt5M7dY+bWALTrilGss+YKaQPAKY5FIsqB2T6uY4x3+yqiEPXJ8NeHjvnnEypkKWFI2NKnjpSfDR3uKDgrsetYbfPAHo9sfpNXBiDjF3mE2u+1xDx5IIkzakHrDKVJMZcBMwwlTI3DzKRMTukKSDqr6Ly6d130Ta3CcIMiCM84/iPJklZ7FTGW0H7XFNidy/8lRyrJsxI4fWYcPEldLGdGl6Yiob7pSFXT5L/z7KFyhCQAA",
+            "verify-port.py": "H4sIAAAAAAACA41XbXPaOBD+zq/QNTexaYKZ9r7RS25oLullQl7mIL2bSahH2GtQkSVXkglc2/9+u7Ix0KRpmQnIkvbt2Wd3nb1fuqU13YlQXVALVqzcTKvfWi9evDjjQrJEagsp04oJlei8kOAAlw6mhjuh1RumtGOc2XJinXAlnmbasInGXQe4paYR6mplRues4G4mxYSJvNDGsRt8bNVrA+uVXdlWy5D8kb8R4kbEzXRx92rMRMYkqGarzY7ZKwbSAguioN1KZpDMLQp+bjH8BJntXvI5ZEJC0GN3gS1tZiPN/G9sQQpVLiMdjA+b+7tHSSVWCBVLncxjYT5ZvoDgkAXvzm7i/uj68vyEnkA5s+ocu1UB8YLLEtjREds8BZWB73zW0jYmCZKsV/v7bK24OapWWzaT5qhaNdFYSEoj3KpbR9OdaT23dUxzW66jjGcihdiUSmG2SPFgeBn/dX19EZ9fnY9CC64wOuHOmUM24yqV0EhunbWfj7EK1IArjdrFf1tJqHgOh8xjdsis+A/ab74fT/2brWO6G54O4v7JyelwOEYSbHyNH1AOYp4kYO1P+EnWvLKT66vR6b+jJ7UlGstg6QgwoYQTXKK7cYZ8i63jrrThs74j1cAsBHq0ZlkNSnUxpmoryelFXOJNMlPdEHiprAgSm6QMcZGiubxz7GFr/1x8bK3OFlpnaCWNuZT6AVKv1NbRVZQ+ZG7n+adNmASRq0URFVMmSF8dW5GGhBEq3q9PKdvpjwDzsO7AhWDgPYOlEBOjU51zocK2R4sMYFFZ/POCvoQbAxdgFMjhbXfuF1ukKrQUyao2gx0nhCyDxFGF9d+P+m/j/mBw/c/pn1ieZCfRpUx9GzSQaIPN0oipUFwyDygzpdzUZGrEAoztCoXJrb63CrLmmN9eP8ACgwv3qzQgWin9VJneoJXn3RxybdZeI2/Pzt/FF8PbeHg7PBvSd3zZvyF/97CTyzIF9nsdsAcyhSyaHW93QlhC8tg32l0Ax2yWxFDu+b91XmjrnriEer+2aDJUBW7gUykMDhahWNW0IyypHEum5+0TI5A5Ic2BLom0IwM8jWk/bPsrXhkA2iQla4W9hpiYuPqYUoNXSLa3w1vDBU6O4cqi6dOlcGEWXAprsQtujziS/Uw+fO3hr1f5Nah8QBsGIgvcJLPQBB/u2L0bv9yjgeSXB3cfuvd2jBBVFMfLl+2ND0/Z5xIDyxGZwgB1RWxYNE8NV8msV/uB1r+xfD8Jc2wWS0/xLzSaLk7/vjodtO8naLyC8anptgNr7dkjr4KhBCgIFV3ABhMDU4ElvWIJ8hwdfhBuxqraic0DOcJmIFN0llJFs99LoSuRmUo9CYOXaP1jUJvFiIJoibrEpDSdZYaMLGywTh6JRwU3zj4L360yYLVcEH7cJTN08iOWLgJHCmrgvn2DeM2Quqx5zXg9pkoPOh2iLr45pEFlclIKmUo9bXgZLITG96EOsr/jDyM83YEUjNHGHuHYKyRPYMOaYHv0spyrEtsFjWekdanSJuy1zWeCDt7yOR/eslRUTSjFNzRsVm7W6MVBRra2OV17Ylf5REu7iUhjU6p0RzkvgsdVt8dGM6EGo2tUvkKNGAW+8ZUqIa02wlNguDfHBDT8yEtLvdFhZ2bC2VoPNbRu/z1zfCLBvvGNwSKXFJvSRc5q+E1nCopohyptmWViGTX172UJp/U48EPR727mJQ7Qame82xx8w94uoYAd1BoPmAnCP3p3ERbvl19pmtRItX/QQIJBFXs1U5iwLK8bSoOGt9BjwYFfNIwgd7aS8KhWNSYDlqii6ZFPO3AFDxtbekLs97qJSa5Oe2GQCmFw0x8Oe5tWjIM4E1P2wG3VkiE93GamZegKaqPtxkCVanr1pp7Xe6zd6tIkO/8xrPs9yvwPlh00kXwMAAA=",
+            "fetch-clang-verified.sh": "H4sIAAAAAAACA61YbW/bNhD+rl9xU7w4XUsp9tZiTeAOQdttwV5QYBlQrO0KWqIsLhSpkpTjNM1++46kJMtyGgzDXBSWxePd8e655445+CJtjE6XXKZMrmFJTRkdwG+vXrwmP/OMScPIec6k5QVn+gR+ePUzmSfHRElxjXLn0lgqBNiSgdJ8xSUVoB8/fTKbPwarlMhKyiVccVuqxgLNMlZbLldAoabacpTO1ZUUiuZJZJgFwhoFNa9ZQbmIojXThiu5iCc3s5PvnguKW9t3wA1o9qHhmuW3cbTUVGalE5x3gkY1OmMQVkbiOTPoB7Wt8q9PvjtbGiUay4CHM/k1yFE+s0pfj/a/eQPxpPUkhsXf8Kd+c0yevnv4hpKP7uGrCbx7B58+wQ2wrFQwPZdrKngOO4eYwrPD+SmwDbcwO4XboDd4HNQ6fWfkD1SZvE/Ju4f3qw0779Y6ODKqhvSrtE9QmrndZHCiXSO/S7apMQ4sHyR1oG/PYITZRdBgaI8wgpJWbOTAgziqLnEJSI0rQTqOMPAr5jZVl5ZVNZC8X0yT4OPkpvXxNvHSyWv/cQqtpjVMdQVEF0AIbvUS8RRevj6/iCqqL5leTJNNhhFbNpr0ZyGZqmrBLCPr+TQKQF5MS2trc5KmVOZa8TxZKbUSLKAqwR1pjSAplMYHzZYNF9aEQKalMjYVXDYbsvn2yTSiOiv5mr1vtHBoCwZu04ft+1SzwqQlo7lJJzchh7fp3nkt1cnqY+yrghfX75375ugB3ESAH6EyV00dXtHOLPbZ8qvopv+B6AavGESeCJGDEOuKUB2+ZRW+1fKvTNXX/Y+8wWT4H8ZqXp9i0Xqt7oPYIhuX3c6y55KJMzaCUfwLN8YVv1s7gVbEI0cz22gZsNMp/oxKQjoCeNZlGIPm1m6THr7zZ4czb7nX5j4ZtZ/fgn7sCHcu9S+DZ7mSzD8cwMsN0xk3zLMfJmeF/LWk2SWTOSBmAAGAgHuEIc9Ek/uDlwwhb0pEtFvGTGvOTOL11ZpLW8B0jVCD9+iktkfuGfN7+9ZVWO96rdUSARhHd0XJJ9dFKTi0oA5jT74hAY0r2QApCs2wFNFF59Pb/oCkkAoTjCcgaMJ6pUCyPbtA1Oidil2wdyI29ivADfdW0LrEBFYpa486cGNP9Z453Llv0OHQ3CUYMNjLIjnxwksXu5yUTgJD+B2Hh07pSjMkoe83HyDuOtGWIj+zeW9n25l6Vr9337C0R5R56uAj/VlDOf3ui8nv4IinjGal+wq00bkZbYF/l9mgzvH2cVTwPjRjusaQjM1Pn7f2kDq5YNo1SER6S6Q4DYBr4Sjg+5NXcwoFs8h4vv8jCE0JjmaSqTedOUCioGsAIYltJ447/uwX/Bl7PmzFWL4oqDAswtyvmcRgs8UUVaMn1Lp2Yh35zWDe01cI4/edT7uRg9YoHHW7J+1DOn8Q4uZaTdtpWuHt+64F9acKS4OmN1o5gDMwTKN1TJfs8PrjxcUrmB8f+xEKo2Z1IzGbGNbWYgIXmCdPQW5K0x05rT7yGpCtGa3g7NcXjp/czyZDtTgTMQwL7thgz8z8QIbko5x+PKBCWrrGjiFypgM3ISoy7F14IpdT/DKluiJMa0cQxHUePywRgl7j1nn3RHIm6DV8PahuTzTYb6VEciCWV8wNhvNjfFnRjX8BT4/dT3xfN3YQ2+2ja6RdxbiPPyzZkT089Ecm9mMxfP0M0pytU9ng0Lrd7yU3u5KEODbEyYXggIpJIc93cjbYParZrcygZALD97iMwxSx6DCGLWH++MlichQeTFMNXfmE0bduGJriP0TcrMWfT00Pfkwu618vMfGXofPzAdbPWntjSMMVHVdvIxtDl4KdApLDFcd4SYX9jW0tJtumGWgj7tS5+XLWcwYYwZANH586X3z/jDr5XlcMXywcuNldTNN53V0VTEstKKivA5tg3IRQV4/A4LiILfkHdBrpKbt06FKFrw+XzO38iqzzn2u109wTUkhn3MWig/XMVe7KuSLw2Ggkx+tPiaHBQsJxEafRpVDLExkWW9fHteJYXjDSXmNI9xAPGkoYKN1T59kQn3veBCj3ksEu6cPl7mHxqI0M1Ln+kA8UpLuirtsPWqgPFxYnvWdHEg9DnP5PteXjrqqKW6yrO46t2ZqEiP/48uzF/SWFwN12x38J2/i5anDAdlWjltbdmCh0BfYIrpS+3G86CfzEtGSi7aqBVkusTafFD0o7ZRcuXN61fnxs55QvzVvZTh7u0f2fDq+sQ/hsgxf7MXObin5MOIALd8UX7ZgRbsN4/8mwE7m/BQAtEM6+zCS72r1D19QYZgZzQBINq244Z0TVelyKY4kQ2/MuA37S3s5Ao+HnnsHnHz/0ctv5EAAA",
+            "BUILD-NOTES.txt": "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"
+          }''')
+          hashes = json.loads(r'''{
+            "kernel-selinux.patch": "6ef03450894bffbe4ad537311cecabafa8776faa963b024b990b224d9b47102c",
+            "bakasu-selinux.patch": "df62c11de1ecfb372578c14cc466617530deb7f9834589a50eaa82cb9cdb039d",
+            "registry.c": "097b7f4a4b2ddab063e2961a817d63857acba3c7c5784563b7d2f33e0fd70200",
+            "test-registry.py": "b7081281c9eb93e6ce5f5b5344e75f1d7d3bea965f48e02de4caa2ec32531135",
+            "stage-build.py": "afc89c92ea268a64cebec68658587d63e9796a7e6bf0213d5460ed9e37bbcfe2",
+            "verify-port.py": "f822c142ddc86183aa598252b95eb56838af1e27cf112e3b1c892b184d23a556",
+            "fetch-clang-verified.sh": "9f4a93a7b48333fb6c42a0c35bf58746ee73ebb7d5065e9188057170a42b73b5",
+            "BUILD-NOTES.txt": "099880165ed1582b4f1c6292141d208fb4eef115e9b6f22dbdce1d43edd555a1"
+          }''')
+          destination = pathlib.Path('selinux-port')
+          destination.mkdir(exist_ok=True)
+          for name, encoded in payload.items():
+              assert pathlib.Path(name).name == name
+              data = gzip.decompress(base64.b64decode(encoded, validate=True))
+              assert hashlib.sha256(data).hexdigest() == hashes[name], name
+              (destination / name).write_bytes(data)
+          pathlib.Path('diagnostics').mkdir(exist_ok=True)
+          pathlib.Path('diagnostics/payload-sha256.json').write_text(json.dumps(hashes, indent=2))
+          print('Embedded patches and checks extracted and verified.')
+          PY
+
+      - name: Set up swap
+        uses: pierotofy/set-swap-space@49819abfb41bd9b44fb781159c033dba90353a7c
+        with:
+          swap-size-gb: 10
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc cpio flex bison libssl-dev \
+            libelf-dev dwarves zip unzip curl git python3 rsync jq ccache
+
+      - name: Validate package target and run registry regression tests
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          installer = Path('anykernel-source/anykernel.sh').read_text()
+          if not re.search(r'^device\.name\d*=violet\s*$', installer, re.M):
+              raise SystemExit('AnyKernel installer does not declare violet; stopping for review')
+          if not re.search(r'^do\.devicecheck=1\s*$', installer, re.M):
+              raise SystemExit('AnyKernel device checking is not enabled; stopping for review')
+          print('AnyKernel declares violet and enables device checking.')
+          PY
+          python3 selinux-port/test-registry.py 2>&1 | tee diagnostics/registry-tests.log
+
+      - name: Stage the builder and experimental port
+        run: |
+          set -euo pipefail
+          cp -r builder/devices builder/scripts kernel_src/
+          cp builder/config.env kernel_src/
+          cd kernel_src
+          python3 ../selinux-port/stage-build.py
+          source scripts/common.sh
+          verify_kernel_version '4.14'
+          bash -n scripts/ksu.sh scripts/compile.sh scripts/env.sh scripts/fetch-clang-verified.sh
+          source config.env
+          bash scripts/variant.sh violet ksu 2>&1 | tee ../diagnostics/integration.log
+          if grep -E 'No file to patch|Skipping patch|patch failed|No such file or directory|^sed:|^grep:.*cannot' ../diagnostics/integration.log; then
+            echo '::error::Baseline integration was incomplete; see diagnostics.'
+            exit 1
+          fi
+          test "$(git -C KernelSU rev-parse HEAD)" = 67b5645279fd07a2688d9641fd4323841efaaeb0
+          git apply --check ../selinux-port/kernel-selinux.patch
+          git apply ../selinux-port/kernel-selinux.patch
+          git -C KernelSU apply --check ../../selinux-port/bakasu-selinux.patch
+          git -C KernelSU apply ../../selinux-port/bakasu-selinux.patch
+          python3 ../selinux-port/verify-port.py .
+
+      - name: Record source versions
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, pathlib, subprocess
+          repositories = {
+              'builder': 'builder', 'kernel': 'kernel_src',
+              'BakaSU': 'kernel_src/KernelSU',
+              'SUSFS_base': 'kernel_src/.xcalibur-xf_deps/susfs',
+              'AnyKernel3': 'anykernel-source',
+          }
+          manifest = {
+              'device': 'violet', 'status': 'experimental; device untested',
+              'SUSFS_change': '61fc8b78c9a0ec42fd9714134de388b1ac307a16',
+              'repositories': {},
+          }
+          for name, path in repositories.items():
+              manifest['repositories'][name] = subprocess.check_output(
+                  ['git', '-C', path, 'rev-parse', 'HEAD'], text=True).strip()
+          pathlib.Path('diagnostics/source-versions.json').write_text(json.dumps(manifest, indent=2)+'\n')
+          print(json.dumps(manifest, indent=2))
+          PY
+
+      - name: Restore the verified Clang toolchain
+        id: clang_cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: kernel_src/toolchain/clang-r596125
+          key: violet-selinux-clang-r596125-verified-v2
+
+      - name: Download and verify the Clang toolchain
+        working-directory: kernel_src
+        run: |
+          set -euo pipefail
+          mkdir -p ../diagnostics
+          exec > >(tee -a ../diagnostics/toolchain-setup.log) 2>&1
+          trap 'setup_rc=$?; printf "%s\n" "$setup_rc" > ../diagnostics/toolchain-exit-code.txt; exit "$setup_rc"' EXIT
+          source config.env
+          source scripts/env.sh violet
+          clang --version > ../diagnostics/compiler-version.txt
+          sha256sum toolchain/clang-r596125/bin/clang > ../diagnostics/compiler-sha256.txt
+          cp toolchain/clang-r596125/.xcalibur-toolchain-complete-v2 ../diagnostics/toolchain-source.txt
+
+      - name: Save the validated compiler for later builds
+        if: steps.clang_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: kernel_src/toolchain/clang-r596125
+          key: violet-selinux-clang-r596125-verified-v2
+
+      - name: Compile the experimental violet kernel
+        working-directory: kernel_src
+        run: |
+          set -euo pipefail
+          mkdir -p ../diagnostics
+          exec > >(tee -a ../diagnostics/build-session.log) 2>&1
+          trap 'build_rc=$?; printf "%s\n" "$build_rc" > ../diagnostics/build-exit-code.txt; exit "$build_rc"' EXIT
+          source config.env
+          source scripts/env.sh violet
+          bash scripts/compile.sh violet ksu
+          python3 ../selinux-port/verify-port.py . --compiled
+          for package in XCalibur-XF_violet_*_SELinux61fc8b7_TEST_*.zip; do
+            test -f "$package"
+            unzip -t "$package"
+            sha256sum "$package" > "$package.sha256"
+          done
+          {
+            echo 'Experimental violet kernel compiled and packaged.'
+            echo 'This does not establish boot compatibility or detector results.'
+            echo 'Download diagnostics-violet-selinux and send it for review before flashing.'
+            echo 'The flashable ZIP is inside the GitHub artifact archive.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Collect diagnostics and the modified source files
+        if: always()
+        run: |
+          mkdir -p diagnostics
+          python3 - <<'PY'
+          from pathlib import Path
+          import shutil, tarfile
+          output = Path('diagnostics')
+          port = Path('selinux-port')
+          if port.exists():
+              for p in port.iterdir():
+                  if p.suffix in ('.patch', '.py', '.sh', '.txt', '.c'):
+                      shutil.copy2(p, output / p.name)
+          root = Path('kernel_src')
+          if root.exists():
+              for pattern in ['*-build.log', '*-config', '*-version.txt', '*-managers.txt']:
+                  for p in root.glob(pattern): shutil.copy2(p, output / p.name)
+              if (root/'out/.config').is_file():
+                  shutil.copy2(root/'out/.config', output/'kernel.config')
+              wanted = [
+                  'fs/susfs_selinux.c', 'include/linux/susfs_selinux.h',
+                  'security/selinux/hooks.c', 'security/selinux/selinuxfs.c',
+                  'security/selinux/ss/services.c', 'security/selinux/ss/status.c',
+                  'KernelSU/kernel/selinux/sepolicy.c',
+                  'KernelSU/kernel/feature/selinux_hide.c',
+                  'drivers/input/input.c', 'mm/memory.c', 'scripts/ksu.sh',
+                  'scripts/compile.sh', 'scripts/env.sh', 'scripts/fetch-clang-verified.sh',
+                  'config.env', 'devices/violet.json',
+                  '.xcalibur-xf_deps/susfs/Patches/Patch/susfs_patch_to_4.14.patch',
+                  '.xcalibur-xf_deps/susfs/Patches/susfs_inline_hook_patches.sh',
+              ]
+              with tarfile.open(output/'modified-sources.tar.gz', 'w:gz') as archive:
+                  for name in wanted:
+                      if (root/name).is_file(): archive.add(root/name, arcname=name)
+                  for p in root.rglob('*.rej'):
+                      if '.xcalibur-xf_deps' not in p.parts:
+                          archive.add(p, arcname=str(p.relative_to(root)))
+          PY
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: diagnostics-violet-selinux
+          path: diagnostics/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload the experimental kernel package
+        if: success()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: xcalibur-violet-selinux-EXPERIMENTAL
+          path: |
+            kernel_src/XCalibur-XF_violet_*_SELinux61fc8b7_TEST_*.zip
+            kernel_src/XCalibur-XF_violet_*_SELinux61fc8b7_TEST_*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
