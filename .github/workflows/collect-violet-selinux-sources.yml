@@ -1,0 +1,168 @@
+name: Collect violet SELinux sources
+
+# Source collection only. This workflow does not compile or flash a kernel.
+# Add this file at .github/workflows/collect-violet-selinux-sources.yml.
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_ref:
+        description: 'XCalibur source branch or exact commit'
+        type: string
+        required: true
+        default: '17'
+      bakasu_ref:
+        description: 'BakaSU branch or commit containing PR 648'
+        type: string
+        required: true
+        default: sync-up
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout builder
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: builder
+          persist-credentials: false
+
+      - name: Checkout XCalibur violet source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Justadeayo/android_kernel_xiaomi_violet
+          ref: ${{ inputs.kernel_ref }}
+          path: kernel-source
+          persist-credentials: false
+
+      - name: Checkout the builder's existing SUSFS backport
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: JackA1ltman/NonGKI_Kernel_Build_2nd
+          ref: dcd789634247c77d8549a42aef232c680a905585
+          path: susfs-backport
+          persist-credentials: false
+
+      - name: Checkout BakaSU with PR 648
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Baka-SU/BakaSU
+          ref: ${{ inputs.bakasu_ref }}
+          path: bakasu-new
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Checkout the builder's previous BakaSU baseline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: Baka-SU/BakaSU
+          ref: d5e9e025b8b49155f8014684d64c91742b465f65
+          path: bakasu-baseline
+          persist-credentials: false
+
+      - name: Collect source snapshots and verify the target
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p collected
+          exec > >(tee -a collected/collection.log) 2>&1
+          python3 - <<'PY'
+          import json, pathlib, re, subprocess, tarfile
+
+          output = pathlib.Path('collected')
+          repositories = {
+              'builder': 'builder',
+              'xcalibur': 'kernel-source',
+              'susfs_backport': 'susfs-backport',
+              'bakasu_requested': 'bakasu-new',
+              'bakasu_baseline': 'bakasu-baseline',
+          }
+          def git(directory, *arguments):
+              return subprocess.check_output(['git', '-C', directory, *arguments], text=True).strip()
+
+          manifest = {
+              'purpose': 'Source review for a violet 4.14 SELinux/SUSFS backport; not a kernel build',
+              'susfs_requested_commit': '61fc8b78c9a0ec42fd9714134de388b1ac307a16',
+              'bakasu_pr648_commit': '67b5645279fd07a2688d9641fd4323841efaaeb0',
+              'repositories': {},
+          }
+          for label, directory in repositories.items():
+              manifest['repositories'][label] = {
+                  'origin': git(directory, 'remote', 'get-url', 'origin'),
+                  'commit': git(directory, 'rev-parse', 'HEAD'),
+              }
+          manifest['contains_pr648'] = subprocess.run([
+              'git', '-C', 'bakasu-new', 'merge-base', '--is-ancestor',
+              manifest['bakasu_pr648_commit'], 'HEAD',
+          ]).returncode == 0
+
+          makefile = pathlib.Path('kernel-source/Makefile').read_text()
+          def version_part(name):
+              match = re.search(r'^' + name + r'\s*=\s*(\d+)\s*$', makefile, re.M)
+              return int(match.group(1)) if match else None
+          manifest['kernel_version'] = [version_part('VERSION'), version_part('PATCHLEVEL')]
+          manifest['expected_kernel'] = manifest['kernel_version'] == [4, 14]
+          (output / 'sources.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          print(json.dumps(manifest, indent=2))
+
+          # Export tracked sources only: excludes credentials, runner state and .git.
+          # The kernel subset contains the code and headers needed to review the
+          # backport, but is intentionally not a complete compilable kernel tree.
+          kernel_paths = [
+              'Makefile', 'Kconfig', 'security', 'include', 'fs', 'kernel',
+              'arch/arm64', 'scripts', 'drivers/Kconfig', 'drivers/Makefile',
+              'AGENTS.md',
+          ]
+          def existing_tracked(directory, paths):
+              return [p for p in paths if git(directory, 'ls-files', '--', p)]
+
+          subsets = {
+              'builder': existing_tracked('builder', [
+                  '.github/workflows', 'scripts', 'devices', 'config.env',
+                  'README.md', 'AGENTS.md',
+              ]),
+              'xcalibur': existing_tracked('kernel-source', kernel_paths),
+          }
+          for label, directory in repositories.items():
+              filename = output / (label + '-source.tar.gz')
+              arguments = ['git', '-C', directory, 'archive', '--format=tar.gz',
+                           '--output=' + str(filename.resolve()), 'HEAD']
+              if label in subsets:
+                  if not subsets[label]:
+                      raise RuntimeError('No requested tracked source paths: ' + label)
+                  arguments += ['--', *subsets[label]]
+              subprocess.run(arguments, check=True)
+              with tarfile.open(filename) as archive:
+                  print(f'{filename.name}: {len(archive.getmembers())} entries, {filename.stat().st_size} bytes')
+
+          checks = {
+              '4.14 kernel': manifest['expected_kernel'],
+              'violet defconfig': pathlib.Path('kernel-source/arch/arm64/configs/vendor/xcalibur-perf_defconfig').is_file(),
+              'BakaSU includes PR 648': manifest['contains_pr648'],
+              'existing 4.14 SUSFS patch': pathlib.Path('susfs-backport/Patches/Patch/susfs_patch_to_4.14.patch').is_file(),
+          }
+          (output / 'checks.json').write_text(json.dumps(checks, indent=2) + '\n')
+          (output / 'READ_ME.txt').write_text(
+              'Upload the whole violet-selinux-sources artifact back to this chat.\n'
+              'This contains source snapshots for review, not a flashable kernel.\n'
+              'No kernel patches or source setup scripts have been executed.\n'
+              'The XCalibur snapshot is a selected subset, not a complete build tree.\n'
+              'sources.json records exact revisions. checks.json records collection checks.\n'
+              'The SUSFS patch previously attached as copy is already available in chat.\n'
+          )
+          if not all(checks.values()):
+              raise SystemExit('Source checks failed; upload the diagnostics for inspection: ' + str(checks))
+          PY
+
+      - name: Upload collected sources
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: violet-selinux-sources
+          path: collected/
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 7
